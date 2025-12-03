@@ -1,0 +1,126 @@
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: app-collector
+  namespace: observability-demo-backend
+spec:
+  mode: deployment
+  replicas: 1
+  serviceAccount: otel-app-collector-deployment
+  config:
+    extensions:
+      bearertokenauth:
+        filename: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 50
+        spike_limit_percentage: 10
+      
+      batch:
+        send_batch_size: 16
+        timeout: 500ms
+
+      k8sattributes:
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+            - k8s.deployment.name
+          labels:
+            - key: vm.kubevirt.io/name
+              tag_name: k8s.vmi.name
+              from: pod
+        pod_association:
+          - sources: [{from: connection}]
+
+      transform/metrics:
+        error_mode: ignore
+        metric_statements:
+          - context: resource
+            statements:
+              - set(attributes["service.name"], Concat([attributes["k8s.namespace.name"], attributes["k8s.vmi.name"]], "/")) where attributes["k8s.vmi.name"] != nil
+          - context: datapoint
+            statements:
+              - set(attributes["job"], resource.attributes["service.name"])
+              - set(attributes["instance"], resource.attributes["k8s.pod.name"])
+              - set(attributes["k8s_pod_name"], resource.attributes["k8s.pod.name"])
+              - set(attributes["k8s_namespace_name"], resource.attributes["k8s.namespace.name"])
+              - set(attributes["k8s_vmi_name"], resource.attributes["k8s.vmi.name"])
+    
+      filter/drop_noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.target"] == "/actuator/prometheus"'
+            - 'attributes["http.target"] == "/q/metrics"'
+            - 'attributes["http.target"] == "/metrics"'
+            - 'name == "GET /actuator/prometheus"'
+            - 'name == "GET /q/metrics"'
+            - 'name == "GET /metrics"'
+        metrics:
+          datapoint:
+            - 'attributes["http.route"] == "/actuator/prometheus"'
+            - 'attributes["http.route"] == "/q/metrics"'
+            - 'attributes["http.route"] == "/metrics"'
+            - 'attributes["http.target"] == "/actuator/prometheus"'
+            - 'attributes["http.target"] == "/q/metrics"'
+            - 'attributes["http.target"] == "/metrics"'
+
+    exporters:
+      otlp/tempo:
+        endpoint: https://tempo-demo-tempostack-gateway.observability-demo-backend.svc:8090
+        tls:
+          insecure: false
+          insecure_skip_verify: true
+        auth:
+          authenticator: bearertokenauth
+        headers:
+          X-Scope-OrgID: "demo"
+
+      otlphttp/loki:
+        endpoint: https://demo-lokistack-gateway-http.observability-demo-backend.svc.cluster.local:8080/api/logs/v1/application/otlp
+        tls:
+          insecure: false
+          insecure_skip_verify: true
+        auth:
+          authenticator: bearertokenauth
+        headers:
+          X-Scope-OrgID: "application"
+
+      # 3. Metrics -> COO Prometheus
+      otlphttp/prometheus:
+        endpoint: http://demo-monitoringstack-prometheus:9090/api/v1/otlp
+        tls:
+          insecure: true
+
+      debug:
+        verbosity: detailed
+
+    service:
+      extensions: [bearertokenauth]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, filter/drop_noise, batch]
+          exporters: [otlp/tempo]
+        
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp/loki]
+          
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, filter/drop_noise, transform/metrics, batch]
+          exporters: [otlphttp/prometheus]

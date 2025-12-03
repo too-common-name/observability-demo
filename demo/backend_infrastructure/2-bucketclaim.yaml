@@ -1,0 +1,17 @@
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: tempostack-demo-bucket
+  namespace: observability-demo-backend
+spec:
+  generateBucketName: tempostack-demo-bucket
+  storageClassName: openshift-storage.noobaa.io
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: loki-demo-bucket
+  namespace: observability-demo-backend
+spec:
+  generateBucketName: loki-demo-bucket
+  storageClassName: openshift-storage.noobaa.io

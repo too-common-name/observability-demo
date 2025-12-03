@@ -1,0 +1,7 @@
+apiVersion: monitoring.rhobs/v1
+kind: Prometheus
+metadata:
+  name: demo-monitoringstack
+  namespace: observability-demo-backend
+spec:
+  enableOTLPReceiver: true

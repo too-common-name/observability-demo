@@ -1,0 +1,77 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: infra-node-collector
+  namespace: observability-demo-backend
+spec:
+  mode: daemonset
+  serviceAccount: otel-infra-collector-deployment
+  config:
+    receivers:
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: "https://${env:K8S_NODE_NAME}:10250"
+        insecure_skip_verify: true
+        metric_groups: [pod, container]
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 50
+        spike_limit_percentage: 10
+      
+      k8sattributes:
+        pod_association:
+          - sources:
+            - from: resource_attribute
+              name: k8s.pod.uid
+          - sources:
+            - from: connection
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+            - k8s.node.name
+            - k8s.deployment.name
+          labels:
+            - key: vm.kubevirt.io/name
+              tag_name: k8s.vmi.name
+              from: pod
+
+      filter/namespace:
+        error_mode: ignore
+        metrics:
+          include:
+            match_type: strict
+            resource_attributes:
+              - key: k8s.namespace.name
+                value: observability-example
+
+      transform:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["job"], "kubeletstats-collector")
+              - set(attributes["instance"], resource.attributes["k8s.pod.name"])
+              
+              # Promote the K8s attributes to actual labels so you can query them
+              - set(attributes["k8s_pod_name"], resource.attributes["k8s.pod.name"])
+              - set(attributes["k8s_namespace_name"], resource.attributes["k8s.namespace.name"])
+              - set(attributes["k8s_vmi_name"], resource.attributes["k8s.vmi.name"])
+
+    exporters:
+      otlphttp/prometheus:
+        endpoint: http://demo-monitoringstack-prometheus:9090/api/v1/otlp
+        tls:
+          insecure: true
+      debug:
+        verbosity: detailed
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [kubeletstats]
+          processors: [memory_limiter, k8sattributes, filter/namespace, transform]
+          exporters: [debug, otlphttp/prometheus]

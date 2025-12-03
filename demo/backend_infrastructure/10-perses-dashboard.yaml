@@ -1,0 +1,318 @@
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: hybrid-cloud-demo
+  namespace: observability-demo-backend
+spec:
+  duration: "30m"
+  display:
+    name: "Hybrid Cloud Observability Demo"
+
+  variables:
+    - kind: "ListVariable"
+      spec:
+        name: "service"
+        display: { name: "Service" }
+        plugin:
+          kind: "PrometheusLabelValuesVariable"
+          spec:
+            datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+            labelName: "job"
+            matchers: ["http_server_request_duration_seconds_count"]
+
+    - kind: "ListVariable"
+      spec:
+        name: "pod"
+        display: { name: "Pod" }
+        plugin:
+          kind: "PrometheusLabelValuesVariable"
+          spec:
+            datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+            labelName: "k8s_pod_name"
+            matchers: ["http_server_request_duration_seconds_count{job='$service'}"]
+
+  layouts:
+    - kind: "Grid"
+      spec:
+        display: { title: "Business KPIs", collapse: { open: true } }
+        items:
+          - x: 0
+            y: 0
+            width: 12 
+            height: 6
+            content: { "$ref": "#/spec/panels/businessCounter" }
+    - kind: "Grid"
+      spec:
+        display: { title: "Application Health", collapse: { open: true } }
+        items:
+          - x: 0
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/reqRate" }
+          - x: 8
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/reqLatency" }
+          - x: 16
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/reqErrors" }
+
+    - kind: "Grid"
+      spec:
+        display: { title: "Infrastructure (Pod/VM)", collapse: { open: true } }
+        items:
+          - x: 0
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/infraCpu" }
+          - x: 8
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/infraMem" }
+          - x: 16
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/infraNet" }
+
+    - kind: "Grid"
+      spec:
+        display: { title: "JVM Runtime", collapse: { open: true } }
+        items:
+          - x: 0
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/jvmHeap" }
+          - x: 8
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/jvmGC" }
+          - x: 16
+            y: 0
+            width: 8
+            height: 6
+            content: { "$ref": "#/spec/panels/jvmThreads" }
+
+  panels:
+    businessCounter:
+      kind: "Panel"
+      spec:
+        display: { name: "Business Transaction Count", description: "Custom metric from code" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            legend: { position: "bottom" }
+            y_axis:
+              unit:
+                kind: "Decimal"
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (job) (rate(business_sales_total_count{job='$service'}[1m]))"
+    reqRate:
+      kind: "Panel"
+      spec:
+        display: { name: "Request Rate", description: "RPS" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            yAxis:
+              format: 
+                unit: "requests/sec"
+            legend: { position: "bottom" }
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (job,k8s_pod_name) (rate(http_server_request_duration_seconds_count{job='$service'}[1m]))"
+
+    reqLatency:
+      kind: "Panel"
+      spec:
+        display: { name: "Latency (p95)", description: "95th Percentile" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            yAxis:
+              format: 
+                unit: "seconds"
+                decimalPlaces: 2
+            legend: { position: "bottom" }
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "histogram_quantile(0.95, sum by (le,job,k8s_pod_name) (rate(http_server_request_duration_seconds_bucket{job='$service', k8s_pod_name=~'$pod'}[1m])))"
+
+    reqErrors:
+      kind: "Panel"
+      spec:
+        display: { name: "Error Rate (%)", description: "Percentage of failed requests" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            visual: { palette: { mode: "auto" } }
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "percent"
+                decimalPlaces: 2
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "(sum by (job, k8s_pod_name)(rate(http_server_request_duration_seconds_count{job='$service', k8s_pod_name=~'$pod', http_response_status_code=~'5.*'}[1m])) / sum by (job, k8s_pod_name)(rate(http_server_request_duration_seconds_count{job='$service', k8s_pod_name=~'$pod'}[1m]))) * 100" 
+    
+    infraCpu:
+      kind: "Panel"
+      spec:
+        display: { name: "Pod CPU Usage" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "decimal"
+                decimalPlaces: 2
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (job, k8s_pod_name) (k8s_pod_cpu_usage{job='kubeletstats-collector', k8s_pod_name=~'$pod'})"
+
+    infraMem:
+      kind: "Panel"
+      spec:
+        display: { name: "Pod Memory (Working Set)" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "bytes"
+                decimalPlaces: 2
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (job, k8s_pod_name) (k8s_pod_memory_working_set_bytes{job='kubeletstats-collector', k8s_pod_name=~'$pod'})"
+
+    infraNet:
+      kind: "Panel"
+      spec:
+        display: { name: "Network I/O" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "bytes"
+                decimalPlaces: 2
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (job, k8s_pod_name) (rate(k8s_pod_network_io_bytes_total{job='kubeletstats-collector', k8s_pod_name=~'$pod', direction='receive'}[1m]))"
+                  seriesNameFormat: "RX {{k8s_pod_name}}"
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (job, k8s_pod_name) (rate(k8s_pod_network_io_bytes_total{job='kubeletstats-collector', k8s_pod_name=~'$pod', direction='transmit'}[1m]))"
+                  seriesNameFormat: "TX {{k8s_pod_name}}"
+
+    jvmHeap:
+      kind: "Panel"
+      spec:
+        display: { name: "JVM Heap Usage" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "bytes"
+                decimalPlaces: 2
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by (jvm_memory_pool_name) (jvm_memory_used_bytes{job='$service', k8s_pod_name=~'$pod', jvm_memory_type='heap'})"
+
+    jvmGC:
+      kind: "Panel"
+      spec:
+        display: { name: "GC Duration" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec:
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "decimal"
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by(job, k8s_pod_name)(rate(jvm_gc_duration_seconds_sum{job='$service', k8s_pod_name=~'$pod'}[1m]))"
+
+    jvmThreads:
+      kind: "Panel"
+      spec:
+        display: { name: "Thread Count" }
+        plugin:
+          kind: "TimeSeriesChart"
+          spec: 
+            legend: { position: "bottom" }
+            yAxis:
+              format: 
+                unit: "decimal"
+        queries:
+          - kind: "TimeSeriesQuery"
+            spec:
+              plugin:
+                kind: "PrometheusTimeSeriesQuery"
+                spec:
+                  datasource: { kind: "PrometheusDatasource", name: "coo-prometheus" }
+                  query: "sum by(job, k8s_pod_name)(jvm_thread_count{job='$service', k8s_pod_name=~'$pod'})"

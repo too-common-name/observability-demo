@@ -1,0 +1,34 @@
+apiVersion: perses.dev/v1alpha1
+kind: PersesDatasource
+metadata:
+  name: coo-prometheus
+  namespace: observability-demo-backend
+spec:
+  config:
+    default: true
+    display:
+      name: "COO Prometheus"
+    plugin:
+      kind: "PrometheusDatasource"
+      spec:
+        proxy:
+          kind: "HTTPProxy"
+          spec:
+            url: "http://demo-monitoringstack-prometheus.observability-demo-backend.svc:9090"
+            allowedEndpoints:
+                - endpointPattern: "/api/v1/labels"
+                  method: "POST"
+                - endpointPattern: "/api/v1/series"
+                  method: "POST"
+                - endpointPattern: "/api/v1/metadata"
+                  method: "GET"
+                - endpointPattern: "/api/v1/query"
+                  method: "POST"
+                - endpointPattern: "/api/v1/query"
+                  method: "GET"
+                - endpointPattern: "/api/v1/query_range"
+                  method: "POST"
+                - endpointPattern: "/api/v1/query_range"
+                  method: "GET"
+                - endpointPattern: "/api/v1/label/([a-zA-Z0-9_-]+)/values"
+                  method: "GET"

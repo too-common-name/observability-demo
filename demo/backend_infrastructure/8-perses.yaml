@@ -1,0 +1,14 @@
+apiVersion: perses.dev/v1alpha1
+kind: Perses
+metadata:
+  name: perses-demo
+  namespace: observability-demo-backend
+spec:
+  containerPort: 8080
+  config:
+    database:
+      file:
+        folder: /tmp/perses/data
+        extension: json
+    global:
+      plugins_path: /tmp/perses/plugins

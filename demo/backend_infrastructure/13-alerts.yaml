@@ -1,0 +1,31 @@
+apiVersion: monitoring.rhobs/v1
+kind: PrometheusRule
+metadata:
+  name: demo-incident-alerts
+  namespace: observability-demo-backend
+  labels:
+    role: alert-rules
+spec:
+  groups:
+  - name: hybrid-cloud-demo.rules
+    rules:
+    
+    # Frontend Analysis Failure
+    - alert: FrontendAnalysisFailed
+      expr: |
+        sum(
+          increase(
+            http_server_request_duration_seconds_count{
+              job="frontend-tomcat-service",
+              http_route="/analyze",
+              http_response_status_code=~"5.."
+            }[1m]
+          )
+        ) > 0
+      for: 0s
+      labels:
+        severity: critical
+        source: "application"
+      annotations:
+        summary: "Critical: Analysis Service Failure"
+        description: "The /analyze endpoint is failing with HTTP 5xx errors. This indicates the backend is either slow (504) or crashing (500)."

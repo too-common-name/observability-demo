@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: perses-demo
+  namespace: observability-demo-backend
+spec:
+  to:
+    name: perses-demo
+    weight: 100
+    kind: Service
+  tls:
+    insecureEdgeTerminationPolicy: ''
+    termination: edge
+  port:
+    targetPort: http
+  alternateBackends: []

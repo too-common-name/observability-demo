@@ -1,0 +1,20 @@
+kind: MonitoringStack
+apiVersion: monitoring.rhobs/v1alpha1
+metadata:
+  name: demo-monitoringstack
+  namespace: observability-demo-backend
+spec:
+ alertmanagerConfig:
+   disabled: false
+ prometheusConfig:
+  #  enableRemoteWriteReceiver: true
+  #  enableOtlpHttpReceiver: true
+   replicas: 1
+   persistentVolumeClaim:
+      resources:
+        requests:
+          storage: 10Gi
+ retention: 2d
+ resourceSelector:
+  matchLabels:
+    role: alert-rules
