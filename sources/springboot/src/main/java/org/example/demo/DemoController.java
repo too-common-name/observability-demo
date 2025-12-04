@@ -33,7 +33,7 @@ public class DemoController {
     private final Timer analysisTimer;
     private final Timer stressTimer;
 
-    public DemoController(MeterRegistry registry, RestTemplate restTemplate, @Value("${quarkus.url:http://localhost:8081}") String quarkusUrl) {
+    public DemoController(MeterRegistry registry, RestTemplate restTemplate, @Value("${QUARKUS_BACKEND_URL:http://localhost:8081}") String quarkusUrl) {
         this.restTemplate = restTemplate;
         this.registry = registry;
         this.quarkusUrl = quarkusUrl;
@@ -65,10 +65,10 @@ public class DemoController {
     @PostMapping(value = "/analyze", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> analyzeSentiment(@RequestBody Map<String, String> payload) {
         Timer.Sample sample = Timer.start(registry);
-
+        String targetUrl = quarkusUrl + "/analyze";
         try {
             String dataToAnalyze = payload.getOrDefault("data", "empty");
-            log.info("Received sentiment request, calling Quarkus backend at {} with data: {}...", quarkusUrl,
+            log.info("Received sentiment request, calling Quarkus backend at {} with data: {}...", targetUrl,
                     dataToAnalyze);
 
             HttpHeaders headers = new HttpHeaders();
@@ -76,7 +76,7 @@ public class DemoController {
 
             HttpEntity<Map<String, String>> request = new HttpEntity<>(payload, headers);
 
-            String response = restTemplate.postForObject(quarkusUrl, request, String.class);
+            String response = restTemplate.postForObject(targetUrl, request, String.class);
 
             log.info("Backend analysis successful: {}", response);
             return ResponseEntity.ok(response);
