@@ -7,7 +7,6 @@
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>3.5.7</version>
 		<relativePath/>
-		<!-- lookup parent from repository -->
 	</parent>
 	<groupId>org.example</groupId>
 	<artifactId>frontend-service</artifactId>
@@ -43,7 +42,7 @@
 		</dependency>
 	</dependencies>
 	<build>
-		<finalName>frontend-service</finalName>
+		<finalName>ROOT</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>

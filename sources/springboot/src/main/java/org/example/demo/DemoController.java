@@ -2,6 +2,7 @@ package org.example.demo;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -10,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -29,19 +31,14 @@ public class DemoController {
     
     private final Timer palindromeTimer;
     private final Timer analysisTimer;
+    private final Timer stressTimer;
 
-    public DemoController(MeterRegistry registry, RestTemplate restTemplate) {
+    public DemoController(MeterRegistry registry, RestTemplate restTemplate, @Value("${quarkus.url:http://localhost:8081}") String quarkusUrl) {
         this.restTemplate = restTemplate;
         this.registry = registry;
-
-        this.quarkusUrl = System.getenv("QUARKUS_BACKEND_URL");
-        if (this.quarkusUrl == null || this.quarkusUrl.isBlank()) {
-            log.error("CRITICAL: QUARKUS_BACKEND_URL environment variable is not set!");
-            throw new IllegalStateException("CRITICAL: QUARKUS_BACKEND_URL environment variable is not set!");
-        }
-
-        log.info("Backend URL successfully loaded: {}", this.quarkusUrl);
-
+        this.quarkusUrl = quarkusUrl;
+        
+        this.stressTimer = registry.timer("springboot_tasks_duration_seconds", "task", "stress");
         this.palindromeTimer = registry.timer("springboot_tasks_duration_seconds", "task", "palindrome");
         this.analysisTimer = registry.timer("springboot_tasks_duration_seconds", "task", "analysis");
     }
@@ -100,7 +97,7 @@ public class DemoController {
     @PostMapping(value = "/stress/{type}")
     public ResponseEntity<String> triggerStress(@PathVariable("type") String type) {
         Timer.Sample sample = Timer.start(registry);
-        String targetUrl = quarkusBaseUrl + "/stress/" + type;
+        String targetUrl = quarkusUrl + "/stress/" + type;
 
         log.warn("TRIGGERING STRESS TEST: {} on backend {}", type, targetUrl);
 
@@ -121,7 +118,7 @@ public class DemoController {
 
     @PostMapping(value = "/reset")
     public ResponseEntity<String> triggerReset() {
-        String targetUrl = quarkusBaseUrl + "/reset";
+        String targetUrl = quarkusUrl + "/reset";
         try {
             restTemplate.postForObject(targetUrl, null, String.class);
             return ResponseEntity.ok("Backend memory cleared.");
