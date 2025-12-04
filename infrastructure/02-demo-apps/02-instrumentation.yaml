@@ -1,0 +1,23 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: java-instrumentation
+  namespace: observability-example
+spec:
+  exporter:
+    endpoint: http://otel-app-collector.observability-demo-backend.svc.cluster.local:4317
+
+  propagators:
+    - tracecontext
+    - baggage
+  
+  sampler:
+    type: parentbased_always_on
+  
+  java:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
+    env:
+      - name: OTEL_METRIC_EXPORT_INTERVAL
+        value: "15000"
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: "grpc"

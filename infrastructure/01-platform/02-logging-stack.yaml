@@ -1,0 +1,17 @@
+kind: LokiStack
+apiVersion: loki.grafana.com/v1
+metadata:
+  name: demo-lokistack
+  namespace: openshift-logging
+spec:
+  size: 1x.extra-small
+  storage:
+    schemas:
+      - effectiveDate: "2024-10-01"
+        version: v13
+    secret:
+      type: s3
+      name: observability-demo-loki-secret
+  storageClassName: ocs-external-storagecluster-ceph-rbd
+  tenants:
+    mode: openshift-logging
