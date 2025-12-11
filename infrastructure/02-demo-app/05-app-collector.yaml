@@ -1,0 +1,109 @@
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-app
+  namespace: observability-demo
+  labels:
+    app: app-collector
+spec:
+  mode: deployment
+  replicas: 1
+  serviceAccount: otel-app-collector-deployment
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.114.0
+  config:
+    extensions:
+      bearertokenauth:
+        filename: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 50
+        spike_limit_percentage: 10
+      
+      batch:
+        send_batch_size: 16
+        timeout: 500ms
+
+      k8sattributes:
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+            - k8s.deployment.name
+          labels:
+            - key: vm.kubevirt.io/name
+              tag_name: k8s.vmi.name
+              from: pod
+        pod_association:
+          - sources: [{from: connection}]
+
+      filter/drop_noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.target"] == "/actuator/prometheus"'
+            - 'attributes["http.target"] == "/q/metrics"'
+            - 'attributes["http.target"] == "/metrics"'
+        metrics:
+          datapoint:
+            - 'attributes["http.route"] == "/actuator/prometheus"'
+            - 'attributes["http.route"] == "/q/metrics"'
+            - 'attributes["http.route"] == "/metrics"'
+
+    exporters:
+      otlp/tempo:
+        endpoint: https://tempo-platform-gateway.openshift-tracing.svc:8090
+        tls:
+          insecure: false
+          insecure_skip_verify: true
+        auth:
+          authenticator: bearertokenauth
+        headers:
+          X-Scope-OrgID: "demo"
+
+      otlphttp/loki:
+        endpoint: https://logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080/api/logs/v1/application/otlp
+        tls:
+          insecure: false
+          insecure_skip_verify: true
+        auth:
+          authenticator: bearertokenauth
+        headers:
+          X-Scope-OrgID: "application"
+
+      # PULL model: UWM does not support the enabling of OTLP a.t.m
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        resource_to_telemetry_conversion:
+          enabled: true 
+    
+      debug:
+        verbosity: detailed
+
+    service:
+      extensions: [bearertokenauth]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, filter/drop_noise, batch]
+          exporters: [otlp/tempo]
+        
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp/loki]
+          
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, filter/drop_noise, batch]
+          exporters: [prometheus]

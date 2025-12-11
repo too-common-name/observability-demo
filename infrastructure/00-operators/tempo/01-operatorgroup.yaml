@@ -2,6 +2,6 @@ apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
   name: openshift-tempo-operator
-  namespace: openshift-distributed-tracing
+  namespace: openshift-tracing
 spec:
   upgradeStrategy: Default

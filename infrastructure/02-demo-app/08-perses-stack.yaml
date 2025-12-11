@@ -1,0 +1,34 @@
+apiVersion: perses.dev/v1alpha1
+kind: Perses
+metadata:
+  name: perses-demo
+  namespace: observability-demo
+spec:
+  containerPort: 8080
+  serviceAccountName: perses-sa
+  args:
+  - '--log.level=trace'
+  config:
+    database:
+      file:
+        folder: /tmp/perses/data
+        extension: json
+    plugin:
+      path: /tmp/perses/plugins
+      enable_dev: false
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: perses-demo
+  namespace: observability-demo
+spec:
+  to:
+    kind: Service
+    name: perses-demo
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+

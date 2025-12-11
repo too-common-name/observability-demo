@@ -22,14 +22,7 @@ spec:
     spec:
       containers:
         - name: quarkus
-          image: quay.io/rh-developers/quarkus-demo:latest
-          securityContext:
-            capabilities:
-              drop:
-                - ALL
-            runAsUser: 1000940000
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
+          image: ghcr.io/too-common-name/observability-demo/quarkus-backend:v0.0.1
           ports:
             - name: http
               containerPort: 8081
@@ -66,7 +59,7 @@ metadata:
     app: frontend-tomcat-service
     vm.kubevirt.io/name: frontend-tomcat-service
 spec:
-  running: true
+  runStrategy: Always
   template:
     metadata:
       labels:
@@ -99,33 +92,63 @@ spec:
           cloudInitNoCloud:
             userData: |
               #cloud-config
-              packages:
-                - java-17-openjdk
-                - tomcat
-                - wget
+              user: fedora
+              password: fedora
+              chpasswd: { expire: False }
 
-              write_files:
-                # 1. Configure OTel Agent
-                - path: /usr/share/tomcat/conf/conf.d/java_opts.conf
-                  content: |
-                    JAVA_OPTS="$JAVA_OPTS -javaagent:/usr/share/java/opentelemetry-javaagent.jar"
-                    JAVA_OPTS="$JAVA_OPTS -Dotel.service.name=frontend-tomcat-service"
-                    JAVA_OPTS="$JAVA_OPTS -Dotel.exporter.otlp.endpoint=http://otel-collector.observability-demo.svc.cluster.local:4317"
-                    JAVA_OPTS="$JAVA_OPTS -Dotel.traces.exporter=otlp"
-                    JAVA_OPTS="$JAVA_OPTS -Dotel.metrics.exporter=otlp"
+              packages:
+                - java-25-openjdk
+                - wget
+                - tar
 
               runcmd:
-                # 2. Download OTel Agent
-                - wget https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar -O /usr/share/java/opentelemetry-javaagent.jar
-                - chmod 644 /usr/share/java/opentelemetry-javaagent.jar
-                
-                # 3. Deploy App from GitHub Artifacts
-                - rm -rf /var/lib/tomcat/webapps/ROOT
-                # REPLACE THE URL BELOW with your actual GitHub Release URL
-                - wget https://github.com/YOUR_ORG/YOUR_REPO/releases/download/v1.0.0/ROOT.war -O /var/lib/tomcat/webapps/ROOT.war
-                - chown tomcat:tomcat /var/lib/tomcat/webapps/ROOT.war
+                - useradd -r -m -U -d /opt/tomcat -s /bin/false tomcat
 
-                # 4. Start Tomcat
+                - wget https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.19/bin/apache-tomcat-10.1.19.tar.gz -O /tmp/tomcat.tar.gz
+                - mkdir -p /opt/tomcat
+                - tar xzf /tmp/tomcat.tar.gz -C /opt/tomcat --strip-components=1
+                
+                - wget https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar -O /opt/tomcat/lib/opentelemetry-javaagent.jar
+                
+                - |
+                  cat <<EOF > /opt/tomcat/bin/setenv.sh
+                  #!/bin/sh
+                  export QUARKUS_BACKEND_URL="http://quarkus-backend.observability-demo.svc.cluster.local:8080"
+                  export OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-app-collector.observability-demo.svc.cluster.local:4317"
+                  export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+                  export OTEL_METRIC_EXPORT_INTERVAL="15000"
+                  export OTEL_METRICS_EXPORTER="otlp"
+                  export OTEL_SERVICE_NAME="frontend-tomcat-service"
+                  export CATALINA_OPTS="$CATALINA_OPTS -javaagent:/opt/tomcat/lib/opentelemetry-javaagent.jar"
+                  EOF
+                - chmod +x /opt/tomcat/bin/setenv.sh
+                
+                - rm -rf /opt/tomcat/webapps/ROOT
+                - wget https://github.com/too-common-name/observability-demo/releases/download/v0.0.1/ROOT.war -O /opt/tomcat/webapps/ROOT.war
+
+                - chown -R tomcat:tomcat /opt/tomcat
+                - chmod +x /opt/tomcat/bin/*.sh
+                - chcon -R -t bin_t /opt/tomcat/bin
+                - chcon -R -t usr_t /opt/tomcat/lib
+                - chcon -R -t usr_t /opt/tomcat/webapps
+
+                - |
+                  cat <<EOF > /etc/systemd/system/tomcat.service
+                  [Unit]
+                  Description=Apache Tomcat
+                  After=network.target syslog.target
+                  [Service]
+                  User=tomcat
+                  Group=tomcat
+                  Type=oneshot
+                  ExecStart=/opt/tomcat/bin/startup.sh
+                  ExecStop=/opt/tomcat/bin/shutdown.sh
+                  RemainAfterExit=yes
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+
+                - systemctl daemon-reload
                 - systemctl enable --now tomcat
 ---
 apiVersion: v1

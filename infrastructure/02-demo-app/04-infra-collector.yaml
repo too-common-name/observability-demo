@@ -1,0 +1,65 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-infra
+  namespace: observability-demo
+  labels:
+    app: infra-collector
+spec:
+  mode: daemonset
+  serviceAccount: otel-infra-collector-deployment
+  config:
+    receivers:
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: "https://${env:K8S_NODE_NAME}:10250"
+        insecure_skip_verify: true
+        metric_groups: [pod, container]
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 50
+        spike_limit_percentage: 10
+      
+      k8sattributes:
+        pod_association:
+          - sources:
+            - from: resource_attribute
+              name: k8s.pod.uid
+          - sources:
+            - from: connection
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+            - k8s.node.name
+            - k8s.deployment.name
+          labels:
+            - key: vm.kubevirt.io/name
+              tag_name: k8s.vmi.name
+              from: pod
+
+      filter/namespace:
+        error_mode: ignore
+        metrics:
+          include:
+            match_type: strict
+            resource_attributes:
+              - key: k8s.namespace.name
+                value: observability-demo
+    
+    # PULL model: UWM does not support the enabling of OTLP a.t.m
+    exporters:
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        resource_to_telemetry_conversion:
+          enabled: true 
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [kubeletstats]
+          processors: [memory_limiter, k8sattributes, filter/namespace]
+          exporters: [prometheus]
