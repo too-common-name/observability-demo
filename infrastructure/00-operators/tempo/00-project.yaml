@@ -2,6 +2,6 @@ apiVersion: project.openshift.io/v1
 kind: Project
 metadata:
   labels:
-    kubernetes.io/metadata.name: openshift-distributed-tracing
+    kubernetes.io/metadata.name: openshift-tracing
     openshift.io/cluster-monitoring: "true"
-  name: openshift-distributed-tracing
+  name: openshift-tracing

@@ -1,0 +1,191 @@
+# =============================================================================
+# 1. KORREL8R CONFIG (Stores + Custom Rules)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: korrel8r-config
+  namespace: openshift-cluster-observability-operator
+data:
+  korrel8r.yaml: |
+    stores:
+      - domain: k8s
+      - domain: alert
+        metrics: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+        alertmanager: https://alertmanager-main.openshift-monitoring.svc:9094
+        certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+      - domain: log
+        lokiStack: https://logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080
+        certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+      - domain: metric
+        metric: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+        certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+      - domain: netflow
+        lokiStack: https://loki-gateway-http.netobserv.svc.cluster.local:8080
+        certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+      - domain: trace
+        tempoStack: https://tempo-platform-gateway.openshift-tracing.svc.cluster.local:8080/api/traces/v1/demo/tempo/api/search
+        tenant: demo
+        certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+
+    include:
+      - /etc/korrel8r/rules/all.yaml
+
+    # CUSTOM OTEL RULE (The reason we are doing this manually)
+    rules:
+      - name: "PodToLokiOTel"
+        start:
+          domain: k8s
+          classes: [Pod]
+        goal:
+          domain: log
+          classes: [application]
+        result: 
+            query: 'log:application:{k8s_namespace_name="{{.metadata.namespace}}",k8s_pod_name="{{.metadata.name}}"}'
+---
+# =============================================================================
+# 2. SERVICE & ACCOUNTS
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: korrel8r-sa
+  namespace: openshift-cluster-observability-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: korrel8r-view
+subjects:
+  - kind: ServiceAccount
+    name: korrel8r-sa
+    namespace: openshift-cluster-observability-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: korrel8r-k8s-reader
+subjects:
+  - kind: ServiceAccount
+    name: korrel8r-sa
+    namespace: openshift-cluster-observability-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: korrel8r
+  namespace: openshift-cluster-observability-operator
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: korrel8r-tls
+  labels:
+    app: korrel8r
+spec:
+  ports:
+  - name: https
+    port: 8443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: korrel8r
+  type: ClusterIP
+---
+# =============================================================================
+# 3. DEPLOYMENT
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: korrel8r
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app: korrel8r
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: korrel8r
+  template:
+    metadata:
+      labels:
+        app: korrel8r
+    spec:
+      serviceAccountName: korrel8r-sa
+      nodeSelector:
+        kubernetes.io/os: linux
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: korrel8r
+        image: quay.io/korrel8r/korrel8r:0.8.4
+        command:
+          - /usr/bin/korrel8r
+          - web
+          - --https=:8443
+          - --cert=/etc/tls/tls.crt
+          - --key=/etc/tls/tls.key
+          - --config=/config/korrel8r.yaml
+          - --verbose=2
+        ports:
+        - containerPort: 8443
+          name: https
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: tls
+          mountPath: /etc/tls
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /api/v1alpha1/domains
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/v1alpha1/domains
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: korrel8r-config
+      - name: tls
+        secret:
+          secretName: korrel8r-tls
+---
+# =============================================================================
+# 4. ROUTE (For Debugging)
+# =============================================================================
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: korrel8r
+  namespace: openshift-cluster-observability-operator
+spec:
+  to:
+    kind: Service
+    name: korrel8r
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect

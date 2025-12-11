@@ -1,8 +1,8 @@
 apiVersion: tempo.grafana.com/v1alpha1
 kind:  TempoStack
 metadata:
-  name: demo-tempostack
-  namespace: openshift-distributed-tracing
+  name: platform
+  namespace: openshift-tracing
 spec:
   storage:
     secret:

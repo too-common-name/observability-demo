@@ -1,7 +1,7 @@
 kind: LokiStack
 apiVersion: loki.grafana.com/v1
 metadata:
-  name: demo-lokistack
+  name: logging-loki
   namespace: openshift-logging
 spec:
   size: 1x.extra-small

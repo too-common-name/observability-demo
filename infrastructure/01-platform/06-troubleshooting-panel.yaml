@@ -1,0 +1,196 @@
+# =============================================================================
+# 1. CONFIGURATION (Empty, uses defaults)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: troubleshooting-panel
+  namespace: openshift-cluster-observability-operator
+data:
+  config.yaml: "" 
+---
+# =============================================================================
+# 2. RBAC - SERVICE ACCOUNT
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: troubleshooting-panel-sa
+  namespace: openshift-cluster-observability-operator
+---
+# =============================================================================
+# 3. RBAC - ROLES (The "Golden" korrel8r-view)
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: korrel8r-view
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "endpoints", "events", "namespaces", "nodes", "pods", "persistentvolumeclaims", "persistentvolumes", "replicationcontrollers", "secrets", "serviceaccounts", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "daemonsets", "deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["list", "watch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses", "volumeattachments"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies", "ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["loki.grafana.com"]
+  resources: ["application", "audit", "infrastructure", "network"]
+  verbs: ["get"]
+---
+# =============================================================================
+# 4. RBAC - BINDINGS
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: korrel8r-view-binding
+subjects:
+  - kind: ServiceAccount
+    name: troubleshooting-panel-sa
+    namespace: openshift-cluster-observability-operator
+roleRef:
+  kind: ClusterRole
+  name: korrel8r-view
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: troubleshooting-panel-monitoring-binding
+subjects:
+  - kind: ServiceAccount
+    name: troubleshooting-panel-sa
+    namespace: openshift-cluster-observability-operator
+roleRef:
+  kind: ClusterRole
+  name: cluster-monitoring-view
+  apiGroup: rbac.authorization.k8s.io
+---
+# =============================================================================
+# 5. SERVICE
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: troubleshooting-panel
+  namespace: openshift-cluster-observability-operator
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: troubleshooting-panel
+  labels:
+    app: troubleshooting-panel
+spec:
+  ports:
+  - name: web
+    port: 9443
+    targetPort: 9443
+    protocol: TCP
+  selector:
+    app: troubleshooting-panel
+  type: ClusterIP
+---
+# =============================================================================
+# 6. DEPLOYMENT (Golden Image)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: troubleshooting-panel
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app: troubleshooting-panel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: troubleshooting-panel
+  template:
+    metadata:
+      labels:
+        app: troubleshooting-panel
+    spec:
+      serviceAccountName: troubleshooting-panel-sa
+      nodeSelector:
+        kubernetes.io/os: linux
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: troubleshooting-panel
+        image: registry.redhat.io/cluster-observability-operator/troubleshooting-panel-console-plugin-rhel9@sha256:580606f194180accc8abba099e17a26dca7522ec6d233fa2fdd40312771703e3
+        imagePullPolicy: IfNotPresent
+        args:
+          - '-port=9443'
+          - '-cert=/var/serving-cert/tls.crt'
+          - '-key=/var/serving-cert/tls.key'
+          - '-plugin-config-path=/etc/plugin/config/config.yaml'
+        ports:
+        - containerPort: 9443
+          name: web
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 50Mi
+        volumeMounts:
+        - name: serving-cert
+          readOnly: true
+          mountPath: /var/serving-cert
+        - name: plugin-config
+          readOnly: true
+          mountPath: /etc/plugin/config
+      volumes:
+      - name: serving-cert
+        secret:
+          secretName: troubleshooting-panel
+      - name: plugin-config
+        configMap:
+          name: troubleshooting-panel
+---
+# =============================================================================
+# 7. CONSOLE PLUGIN REGISTRATION
+# =============================================================================
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: troubleshooting-panel-console-plugin
+spec:
+  displayName: Troubleshooting Panel
+  i18n:
+    loadType: Preload
+  backend:
+    type: Service
+    service:
+      name: troubleshooting-panel
+      namespace: openshift-cluster-observability-operator
+      port: 9443
+      basePath: /
+  proxy:
+  - alias: korrel8r
+    authorization: UserToken
+    endpoint:
+      type: Service
+      service:
+        name: korrel8r
+        namespace: openshift-cluster-observability-operator
+        port: 8443

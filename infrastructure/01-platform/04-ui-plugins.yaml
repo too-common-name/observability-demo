@@ -24,7 +24,7 @@ spec:
   logging:
     logsLimit: 100
     lokiStack:
-      name: demo-lokistack
+      name: logging-loki
       namespace: openshift-logging
     schema: otel
     timeout: 30s
@@ -40,11 +40,11 @@ spec:
     incidents:
       enabled: true
   type: Monitoring
----
-apiVersion: observability.openshift.io/v1alpha1
-kind: UIPlugin
-metadata:
-  name: troubleshooting-panel
-  namespace: openshift-cluster-observability-operator
-spec:
-  type: TroubleshootingPanel
+# ---
+# apiVersion: observability.openshift.io/v1alpha1
+# kind: UIPlugin
+# metadata:
+#   name: troubleshooting-panel
+#   namespace: openshift-cluster-observability-operator
+# spec:
+#   type: TroubleshootingPanel

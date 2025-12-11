@@ -2,10 +2,10 @@ apiVersion: opentelemetry.io/v1alpha1
 kind: Instrumentation
 metadata:
   name: java-instrumentation
-  namespace: observability-example
+  namespace: observability-demo
 spec:
   exporter:
-    endpoint: http://otel-app-collector.observability-demo-backend.svc.cluster.local:4317
+    endpoint: http://otel-app-collector.observability-demo.svc.cluster.local:4317
 
   propagators:
     - tracecontext
