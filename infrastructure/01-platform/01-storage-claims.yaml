@@ -15,3 +15,12 @@ metadata:
 spec:
   generateBucketName: loki-demo-bucket
   storageClassName: openshift-storage.noobaa.io
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: netobserv-demo-bucket
+  namespace: netobserv
+spec:
+  generateBucketName: netobserv-demo-bucket
+  storageClassName: openshift-storage.noobaa.io
