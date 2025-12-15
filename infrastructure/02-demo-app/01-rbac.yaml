@@ -93,7 +93,7 @@ metadata:
   name: tempostack-traces-write-rbac
 rules:
   - apiGroups: ['tempo.grafana.com']
-    resources: ['demo', 'dev', 'prod']
+    resources: ['demo', 'dev', 'prod', 'platform']
     resourceNames: ['traces']
     verbs: ['create']
 ---

@@ -8,7 +8,8 @@ metadata:
 rules:
   - apiGroups:
       - 'tempo.grafana.com'
-    resources: 
+    resources:
+      - platform
       - demo
       - dev
       - prod
@@ -82,6 +83,7 @@ rules:
   - apiGroups:
       - 'tempo.grafana.com'
     resources:
+      - platform
       - demo
       - dev
       - prod
