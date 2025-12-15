@@ -14,9 +14,12 @@ LOKI_OBC="loki-demo-bucket"
 TEMPO_NS="openshift-tracing"
 TEMPO_OBC="tempostack-demo-bucket"
 
+NETOBSERV_NS="netobserv"
+NETOBSERV_OBC="netobserv-demo-bucket"
+
 # Function to process a single stack
 process_secret() {
-    local TYPE=$1      # "loki" or "tempo"
+    local TYPE=$1      # "loki", "tempo" or "netobserv"
     local NS=$2        # Namespace
     local OBC_NAME=$3  # OBC Name
     local TEMPLATE_FILE="$TEMPLATE_DIR/$TYPE-secret.yaml"
@@ -66,7 +69,7 @@ process_secret() {
     # Fill Template using yq
     echo "   📝 Generating secret manifest..."
     
-    if [[ "$TYPE" == "loki" ]]; then
+    if [[ "$TYPE" == "loki" ]] || [ "$TYPE" == "netobserv" ]; then
         yq eval "del(.stringData) | \
                  .data.bucketnames = \"$B64_BUCKET\" | \
                  .data.endpoint = \"$B64_ENDPOINT\" | \
@@ -91,5 +94,6 @@ process_secret() {
 # Execute
 process_secret "loki" $LOKI_NS $LOKI_OBC
 process_secret "tempo" $TEMPO_NS $TEMPO_OBC
+process_secret "netobserv" $NETOBSERV_NS $NETOBSERV_OBC
 
 echo "🎉 Storage setup complete."
