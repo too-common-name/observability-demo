@@ -2,7 +2,7 @@
 set -e
 
 # Namespaces where Operators might be installed (check the file 00-project foreach operator folder in 00-operators)
-NAMESPACES=("openshift-cluster-observability-operator" "openshift-operators-redhat" "openshift-logging" "openshift-opentelemetry-operator" "openshift-tracing")
+NAMESPACES=("openshift-cluster-observability-operator" "openshift-operators-redhat" "openshift-logging" "openshift-opentelemetry-operator" "openshift-tracing" "openshift-netobserv-operator")
 TIMEOUT_SECONDS=300
 
 echo "⏳ Checking Operator installation status..."
