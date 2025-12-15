@@ -23,6 +23,8 @@ spec:
         tenantId: "1610b0c3-c509-4592-a256-a1871353dbfb"
       - tenantName: prod
         tenantId: "1610b0c3-c509-4592-a256-a1871353dbfc"
+      - tenantName: platform
+        tenantId: "1610b0c3-c509-4592-a256-a1871353dbfd"
   template:
     gateway:
       enabled: true

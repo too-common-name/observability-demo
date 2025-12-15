@@ -69,7 +69,8 @@ spec:
         auth:
           authenticator: bearertokenauth
         headers:
-          X-Scope-OrgID: "demo"
+          # X-Scope-OrgID: "demo" TODO: korrel8 and UI plugin does not support tenant propagation, they use 'platform' as defult
+          X-Scope-OrgID: "platform"
 
       otlphttp/loki:
         endpoint: https://logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080/api/logs/v1/application/otlp
