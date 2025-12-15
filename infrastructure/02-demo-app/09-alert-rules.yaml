@@ -1,0 +1,105 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-error-alerts
+  namespace: observability-demo
+  labels:
+    role: alert-rules
+spec:
+  groups:
+  - name: application.rules
+    rules:
+    - alert: FrontendHighErrorRate
+      expr: |
+        (
+          sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.*", service_name="frontend-tomcat-vm"}[1m])) 
+          / 
+          sum(rate(http_server_request_duration_seconds_count{service_name="frontend-tomcat-vm"}[1m]))
+        ) * 100 > 30
+      for: 30s
+      labels:
+        severity: critical
+        service_name: "frontend-tomcat-vm"
+        component: "frontend"
+        app: "demo-stack"
+      annotations:
+        summary: "High Error Rate on Frontend"
+        description: "The Tomcat Frontend is returning 500 errors for >20% of requests."
+
+    - alert: FrontendHighLatency
+      expr: |
+        histogram_quantile(0.9, sum(rate(http_server_request_duration_seconds_bucket{service_name="frontend-tomcat-vm"}[1m])) by (le)) > 2
+      for: 30s
+      labels:
+        severity: warning
+        service_name: "frontend-tomcat-vm"
+        component: "frontend"
+        app: "demo-stack"
+      annotations:
+        summary: "Slow Responses on Frontend"
+        description: "90th percentile latency is > 2 seconds. The backend is likely slow."
+
+    - alert: FrontendServiceDegradation
+      expr: rate(http_server_request_duration_seconds_count{service_name="frontend-tomcat-vm"}[1m]) > 5
+      for: 1m
+      labels:
+        severity: info
+        service_name: "frontend-tomcat-vm"
+        component: "frontend"
+        app: "demo-stack"
+      annotations:
+        summary: "Service under heavy load"
+        description: "Traffic spike detected on frontend-tomcat-vm."
+
+    - alert: BackendHighCPU
+      expr: sum(rate(container_cpu_usage_seconds_total{pod=~"quarkus.*", container!="POD"}[1m])) > 0.2
+      for: 15s
+      labels:
+        severity: warning
+        service_name: "quarkus-backend"
+        component: "backend"
+        app: "demo-stack"
+      annotations:
+        summary: "Backend CPU Saturation"
+        description: "The Quarkus Backend ({{ $labels.pod }}) is consuming high CPU."
+
+    - alert: BackendHighMemory
+      expr: sum(container_memory_working_set_bytes{pod=~"quarkus.*", container!="POD"}) > 700 * 1024 * 1024
+      for: 15s
+      labels:
+        severity: critical
+        service_name: "quarkus-backend"
+        component: "backend"
+        app: "demo-stack"
+      annotations:
+        summary: "Backend Memory Leak"
+        description: "The Quarkus Backend ({{ $labels.pod }}) memory usage is critically high."
+
+    - alert: BackendHighErrorRate
+      expr: |
+        (
+          sum(rate(http_server_request_duration_seconds_count{http_route="/analyze", http_response_status_code=~"5.."}[1m]))
+          /
+          sum(rate(http_server_request_duration_seconds_count{http_route="/analyze"}[1m]))
+        ) * 100 > 70
+      for: 30s
+      labels:
+        severity: critical
+        service_name: "quarkus-backend"
+        component: "backend"
+        app: "demo-stack"
+      annotations:
+        summary: "High Failure Rate in Backend Analysis"
+        description: "The Quarkus Backend is reporting >20% HTTP 500 errors on /analyze."
+
+    - alert: BackendRestarts
+      expr: changes(kube_pod_container_status_restarts_total{pod=~"quarkus.*", container!="POD"}[2m]) > 0
+      for: 0m
+      labels:
+        severity: critical
+        service_name: "quarkus-backend"
+        component: "backend"
+        app: "demo-stack"
+      annotations:
+        summary: "Backend Application Crashed"
+        description: "The Quarkus Backend ({{ $labels.pod }}) has restarted due to an error or OOM kill."

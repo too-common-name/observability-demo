@@ -118,7 +118,7 @@ spec:
                   export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
                   export OTEL_METRIC_EXPORT_INTERVAL="15000"
                   export OTEL_METRICS_EXPORTER="otlp"
-                  export OTEL_SERVICE_NAME="frontend-tomcat-service"
+                  export OTEL_SERVICE_NAME="frontend-tomcat-vm"
                   export CATALINA_OPTS="$CATALINA_OPTS -javaagent:/opt/tomcat/lib/opentelemetry-javaagent.jar"
                   EOF
                 - chmod +x /opt/tomcat/bin/setenv.sh

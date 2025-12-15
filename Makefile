@@ -61,17 +61,19 @@ deploy-platform: check-tools ## 2. Deploy UWM, Loki, Tempo, and UI Plugins
 	@echo "   [3/6] Linking Storage to Platform..."
 	@./$(SCRIPTS_DIR)/setup-storage.sh
 	
-	@echo "   [4/6] Deploying Loki & Tempo Stacks..."
+	@echo "   [4/6] Deploying Loki, Tempo and Netobserv Stacks..."
 	@$(OC) apply -f $(PLATFORM_DIR)/02-logging-stack.yaml
 	@$(OC) apply -f $(PLATFORM_DIR)/03-tracing-stack.yaml
+	@$(OC) apply -f $(PLATFORM_DIR)/04-netobserv-stack.yaml
 	
 	@echo "   [5/6] Enabling Console Plugins (Troubleshooting/Incidents)..."
-	@$(OC) apply -f $(PLATFORM_DIR)/04-ui-plugins.yaml
+	@$(OC) apply -f $(PLATFORM_DIR)/05-ui-plugins.yaml
 
 	@echo "   [6/6] Manually create troubleshooting resources"
-	@$(OC) apply -f $(PLATFORM_DIR)/05-korrel8-stack.yaml
-	@$(OC) apply -f $(PLATFORM_DIR)/06-troubleshooting-panel.yaml
-	
+	@$(OC) apply -f $(PLATFORM_DIR)/06-korrel8-stack.yaml
+	@$(OC) apply -f $(PLATFORM_DIR)/07-troubleshooting-panel.yaml
+# 	TODO: enable plugin
+
 	@echo "✅ Platform Stack Deployed."
 
 # ====================================================================================
