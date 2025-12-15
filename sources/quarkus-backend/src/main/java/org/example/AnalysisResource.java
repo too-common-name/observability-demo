@@ -8,7 +8,7 @@ import jakarta.ws.rs.Path;
 import java.util.Map;
 import java.util.Random;
 
-@Path("/analyze")
+@Path("/")
 public class AnalysisResource {
 
     private static final Logger LOG = LoggerFactory.getLogger(AnalysisResource.class);
@@ -21,6 +21,7 @@ public class AnalysisResource {
     }
 
     @POST 
+    @Path("/analyze")
     public String analyze(Map<String, String> payload) throws Exception {
         String data = payload.getOrDefault("data", "empty");
         LOG.info("Analysis request received for data: {}", data);
