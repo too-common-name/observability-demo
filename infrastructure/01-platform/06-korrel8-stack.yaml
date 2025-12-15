@@ -24,14 +24,12 @@ data:
         lokiStack: https://loki-gateway-http.netobserv.svc.cluster.local:8080
         certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
       - domain: trace
-        tempoStack: https://tempo-platform-gateway.openshift-tracing.svc.cluster.local:8080/api/traces/v1/demo/tempo/api/search
-        tenant: demo
+        tempoStack: https://tempo-platform-gateway.openshift-tracing.svc.cluster.local:8080/api/traces/v1/platform/tempo/api/search
         certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
 
     include:
       - /etc/korrel8r/rules/all.yaml
 
-    # CUSTOM OTEL RULE (The reason we are doing this manually)
     rules:
       - name: "PodToLokiOTel"
         start:
@@ -42,6 +40,46 @@ data:
           classes: [application]
         result: 
             query: 'log:application:{k8s_namespace_name="{{.metadata.namespace}}",k8s_pod_name="{{.metadata.name}}"}'
+
+      - name: PodToAlertVM
+        start:
+          domain: k8s
+          classes: [Pod]
+        goal:
+          domain: alert
+          classes: [alert]
+        result:
+          query: |-
+            {{- $lbl := .metadata.labels | default dict -}}
+            {{- $vm_label := index $lbl "vm.kubevirt.io/name" -}}
+            {{- if $vm_label -}}
+              alert:alert:{"namespace":"{{.metadata.namespace}}","service_name":"{{ $vm_label }}"}
+            {{- else if (regexMatch "^virt-launcher-.*" .metadata.name) -}}
+              {{- $vm_name := regexReplaceAll "^virt-launcher-(.*)-.{5}$" .metadata.name "${1}" -}}
+              alert:alert:{"namespace":"{{.metadata.namespace}}","service_name":"{{ $vm_name }}"}
+            {{- end -}}
+
+      - name: VmToAlert
+        start:
+          domain: k8s
+          classes: [VirtualMachine.kubevirt.io]
+        goal:
+          domain: alert
+          classes: [alert]
+        result:
+          query: |-
+            alert:alert:{"namespace":"{{.metadata.namespace}}","service_name":"{{.metadata.name}}"}
+
+      - name: VmiToAlert
+        start:
+          domain: k8s
+          classes: [VirtualMachineInstance.kubevirt.io]
+        goal:
+          domain: alert
+          classes: [alert]
+        result:
+          query: |-
+            alert:alert:{"namespace":"{{.metadata.namespace}}","service_name":"{{.metadata.name}}"}
 ---
 # =============================================================================
 # 2. SERVICE & ACCOUNTS
@@ -78,24 +116,27 @@ roleRef:
   kind: ClusterRole
   name: view
 ---
-apiVersion: v1
-kind: Service
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
 metadata:
-  name: korrel8r
-  namespace: openshift-cluster-observability-operator
-  annotations:
-    service.beta.openshift.io/serving-cert-secret-name: korrel8r-tls
-  labels:
-    app: korrel8r
-spec:
-  ports:
-  - name: https
-    port: 8443
-    targetPort: 8443
-    protocol: TCP
-  selector:
-    app: korrel8r
-  type: ClusterIP
+  name: korrel8r-alertmanager-access
+rules:
+- apiGroups: ["monitoring.coreos.com"]
+  resources: ["alertmanagers/api"]
+  verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: korrel8r-alertmanager-binding
+subjects:
+  - kind: ServiceAccount
+    name: korrel8r-sa
+    namespace: openshift-cluster-observability-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: korrel8r-alertmanager-access
 ---
 # =============================================================================
 # 3. DEPLOYMENT
@@ -134,7 +175,7 @@ spec:
           - --cert=/etc/tls/tls.crt
           - --key=/etc/tls/tls.key
           - --config=/config/korrel8r.yaml
-          - --verbose=2
+          - --verbose=5
         ports:
         - containerPort: 8443
           name: https
@@ -172,20 +213,39 @@ spec:
           secretName: korrel8r-tls
 ---
 # =============================================================================
-# 4. ROUTE (For Debugging)
+# 4. NETWORK
 # =============================================================================
-apiVersion: route.openshift.io/v1
-kind: Route
+apiVersion: v1
+kind: Service
 metadata:
   name: korrel8r
   namespace: openshift-cluster-observability-operator
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: korrel8r-tls
+  labels:
+    app: korrel8r
 spec:
-  to:
-    kind: Service
-    name: korrel8r
-    weight: 100
-  port:
-    targetPort: https
-  tls:
-    termination: reencrypt
-    insecureEdgeTerminationPolicy: Redirect
+  ports:
+  - name: https
+    port: 8443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: korrel8r
+  type: ClusterIP
+# ---
+# apiVersion: route.openshift.io/v1
+# kind: Route
+# metadata:
+#   name: korrel8r
+#   namespace: openshift-cluster-observability-operator
+# spec:
+#   to:
+#     kind: Service
+#     name: korrel8r
+#     weight: 100
+#   port:
+#     targetPort: https
+#   tls:
+#     termination: reencrypt
+#     insecureEdgeTerminationPolicy: Redirect
