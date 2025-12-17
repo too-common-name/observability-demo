@@ -5,8 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.core.Response;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 
 @Path("/")
 public class AnalysisResource {
@@ -50,24 +52,41 @@ public class AnalysisResource {
 
     @POST
     @Path("/stress/{type}")
-    public String stress(@jakarta.ws.rs.PathParam("type") String type) {
+    public Response stress(@jakarta.ws.rs.PathParam("type") String type) {
         if ("memory".equals(type)) {
-            LOG.warn("⚠️ Starting MEMORY STRESS test...");
-            for (int i = 0; i < 20; i++) {
-                LEAKY_BUCKET.add(new byte[10 * 1024 * 1024]);
-                LOG.info("Allocated 10MB. Total chunks: " + LEAKY_BUCKET.size());
-            }
-            return "Allocated 200MB";
+            LOG.warn("Received MEMORY STRESS request. Starting in background...");
+            
+            CompletableFuture.runAsync(() -> {
+                try {
+                    LOG.warn("[Background] Starting MEMORY allocation...");
+                    for (int i = 0; i < 20; i++) {
+                        LEAKY_BUCKET.add(new byte[10 * 1024 * 1024]);
+                        LOG.info("[Background] Allocated 10MB. Total chunks: " + LEAKY_BUCKET.size());
+                        Thread.sleep(100); // Small delay to see logs
+                    }
+                    LOG.warn("[Background] Memory stress complete. Total allocated: " + (LEAKY_BUCKET.size() * 10) + "MB");
+                } catch (Exception e) {
+                    LOG.error("Memory stress failed", e);
+                }
+            });
+            
+            return Response.accepted("Memory stress test initiated in background.").build();
         } 
         else if ("cpu".equals(type)) {
-            LOG.warn("⚠️ Starting CPU STRESS test...");
-            long endTime = System.currentTimeMillis() + 10000;
-            while (System.currentTimeMillis() < endTime) {
-                Math.pow(Math.random(), Math.random());
-            }
-            return "Burned CPU for 10s";
+            LOG.warn("🚀 Received CPU STRESS request. Starting in background...");
+
+            CompletableFuture.runAsync(() -> {
+                LOG.warn("[Background] Starting CPU burn for 10s...");
+                long endTime = System.currentTimeMillis() + 10000;
+                while (System.currentTimeMillis() < endTime) {
+                    Math.pow(Math.random(), Math.random());
+                }
+                LOG.warn("[Background] CPU burn complete.");
+            });
+
+            return Response.accepted("CPU stress test initiated in background (10s duration).").build();
         }
-        return "Unknown stress type";
+        return Response.status(400).entity("Unknown stress type").build();
     }
 
     @POST
@@ -75,6 +94,7 @@ public class AnalysisResource {
     public String reset() {
         LEAKY_BUCKET.clear();
         System.gc();
+        LOG.info("Memory cleared.");
         return "Memory cleared";
     }
 }
