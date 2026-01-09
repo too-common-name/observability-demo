@@ -30,3 +30,8 @@ spec:
       enabled: true
       rbac:
         enabled: true 
+  extraConfig:
+      tempo:
+        query_frontend:
+          mcp_server:
+            enabled: true
