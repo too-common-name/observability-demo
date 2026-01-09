@@ -12,6 +12,9 @@ spec:
     secret:
       name: netobserv-loki-secret
       type: s3
+    tls:
+      caName: "openshift-service-ca.crt"
+      caKey: "service-ca.crt"
   storageClassName: ocs-external-storagecluster-ceph-rbd 
   tenants:
     mode: openshift-network
@@ -54,7 +57,7 @@ spec:
   agent:
     type: eBPF                                
     ebpf:
-      sampling: 50                            
+      sampling: 150                        
       logLevel: info
       privileged: false
       resources:

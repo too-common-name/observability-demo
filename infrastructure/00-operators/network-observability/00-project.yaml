@@ -6,8 +6,8 @@ metadata:
     openshift.io/cluster-monitoring: "true"
     kubernetes.io/metadata.name: openshift-netobserv-operator
 ---
-apiVersion: project.openshift.io/v1
-kind: Project
+apiVersion: v1
+kind: Namespace
 metadata:
   name: netobserv
   labels:
