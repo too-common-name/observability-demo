@@ -1,0 +1,84 @@
+kind: Secret
+apiVersion: v1
+metadata:
+  name: credentials
+  namespace: openshift-lightspeed
+data:
+  apitoken: "${LLM_API_TOKEN}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tempo-tenant-id
+  namespace: openshift-lightspeed
+stringData:
+  header: 1610b0c3-c509-4592-a256-a1871353dbfd
+---
+apiVersion: ols.openshift.io/v1alpha1
+kind: OLSConfig
+metadata:
+  name: cluster
+spec:
+  featureGates:
+  - MCPServer
+  llm:
+    providers:
+    - name: incidents-analysis-provider
+      type: openai
+      credentialsSecretRef:
+        name: credentials
+      url: "${LLM_URL}"
+      models:
+      - name: "${LLM_MODEL}"
+  mcpServers:
+  - name: cluster-health
+    streamableHTTP:
+      enableSSE: false
+      headers:
+        kubernetes-authorization: kubernetes
+      sseReadTimeout: 10
+      timeout: 5
+      url: 'http://cluster-health-mcp-server.openshift-cluster-observability-operator.svc.cluster.local:8085/mcp'
+  - name: traces
+    streamableHTTP:
+      enableSSE: false
+      headers:
+        kubernetes-authorization: kubernetes
+        X-Scope-OrgID: tempo-tenant-id
+      sseReadTimeout: 10
+      timeout: 5
+      url: 'http://tempo-mcp-adapter.openshift-tracing.svc.cluster.local:80/api/mcp'
+  ols:
+    defaultModel: "${LLM_MODEL}"
+    defaultProvider: incidents-analysis-provider
+    logLevel: INFO
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tempostack-traces-reader
+rules:
+  - apiGroups:
+      - 'tempo.grafana.com'
+    resources:
+      - platform
+      - demo
+      - dev
+      - prod
+    resourceNames:
+      - traces
+    verbs:
+      - 'get' 
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: lightspeed-tempo-reader-binding
+subjects:
+- kind: ServiceAccount
+  name: lightspeed-app-server
+  namespace: openshift-lightspeed
+roleRef:
+  kind: ClusterRole
+  name: tempostack-traces-reader
+  apiGroup: rbac.authorization.k8s.io
