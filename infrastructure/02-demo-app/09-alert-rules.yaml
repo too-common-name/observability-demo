@@ -78,10 +78,10 @@ spec:
     - alert: BackendHighErrorRate
       expr: |
         (
-          sum(rate(http_server_request_duration_seconds_count{http_route="/analyze", http_response_status_code=~"5.."}[1m]))
-          /
-          sum(rate(http_server_request_duration_seconds_count{http_route="/analyze"}[1m]))
-        ) * 100 > 70
+          sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.*", k8s_deployment_name="quarkus-backend"}[1m])) 
+          / 
+          sum(rate(http_server_request_duration_seconds_count{k8s_deployment_name="quarkus-backend"}[1m]))
+        ) * 100 > 30
       for: 30s
       labels:
         severity: critical
@@ -90,7 +90,7 @@ spec:
         app: "demo-stack"
       annotations:
         summary: "High Failure Rate in Backend Analysis"
-        description: "The Quarkus Backend is reporting >20% HTTP 500 errors on /analyze."
+        description: "The Quarkus Backend is reporting >30% HTTP 500 errors on /analyze."
 
     - alert: BackendRestarts
       expr: changes(kube_pod_container_status_restarts_total{pod=~"quarkus.*", container!="POD"}[2m]) > 0
