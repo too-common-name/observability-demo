@@ -28,10 +28,14 @@ data:
         certificateAuthority: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
 
     include:
-      - /etc/korrel8r/rules/all.yaml
+      - /etc/korrel8r/rules/k8s.yaml
+      - /etc/korrel8r/rules/alert.yaml
+      - /etc/korrel8r/rules/netflow.yaml
+      - /etc/korrel8r/rules/trace.yaml
+      - /etc/korrel8r/rules/incident.yaml
 
     rules:
-      - name: "PodToLokiOTel"
+      - name: "PodToLogOtel"
         start:
           domain: k8s
           classes: [Pod]
@@ -40,6 +44,16 @@ data:
           classes: [application]
         result: 
             query: 'log:application:{k8s_namespace_name="{{.metadata.namespace}}",k8s_pod_name="{{.metadata.name}}"}'
+    
+      - name: "LogToPodOtel"
+        start:
+          domain: log
+        goal:
+          domain: k8s
+          classes: [Pod]
+        result:
+          query: |-
+            k8s:Pod:{namespace: "{{.k8s_namespace_name}}", name: "{{.k8s_pod_name}}"}
 
       - name: PodToAlertVM
         start:
