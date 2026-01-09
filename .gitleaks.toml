@@ -2,5 +2,4 @@
   description = "Global Allowlist"
 
   paths = [
-    '''demo\/backend_infrastructure\/3-secret.yaml''',
   ]
