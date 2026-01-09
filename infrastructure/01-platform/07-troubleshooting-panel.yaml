@@ -152,6 +152,9 @@ spec:
           requests:
             cpu: 10m
             memory: 50Mi
+          limits:
+            cpu: 50m
+            memory: 150Mi
         volumeMounts:
         - name: serving-cert
           readOnly: true
