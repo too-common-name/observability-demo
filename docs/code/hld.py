@@ -1,52 +1,81 @@
-from diagrams import Diagram, Cluster
-from diagrams.k8s.compute import Pod
+from diagrams import Diagram, Cluster, Edge
+from diagrams.k8s.compute import Pod, DaemonSet
 from diagrams.k8s.infra import Node
-from diagrams.k8s.network import Service
 from diagrams.onprem.monitoring import Prometheus
 from diagrams.onprem.tracing import Tempo
 from diagrams.onprem.logging import Loki
-from diagrams.onprem.compute import Server
-from diagrams.onprem.monitoring import Grafana
+from diagrams.custom import Custom
+from diagrams.onprem.network import Tomcat
 
-with Diagram("hld", show=True, direction="TB"):
+# Graph attributes to help with layout spacing and label placement
+graph_attr = {"splines": "spline", "nodesep": "0.6", "ranksep": "0.8", "rankdir": "LR"}
 
-    # Backend
-    backend_metrics = Prometheus("Prometheus Metrics")
-    backend_traces = Tempo("Tempo Traces")
-    backend_logs = Loki("Loki Logs")
-    grafana = Grafana("Grafana Dashboards")
+with Diagram(
+    "Observability Demo Architecture",
+    filename="../images/observability_demo_architecture",
+    show=True,
+    graph_attr=graph_attr,
+):
 
-    # Collectors
-    infra_collector = Server("Infra Collector\n(Deployment)")
-    app_collector = Server("App Collector\n(Deployment)")
+    with Cluster("Visualization & Intelligence"):
+        ols = Custom("OpenShift Lightspeed", "./icons/ols.png")
+        perses = Custom("Perses", "./icons/perses.png")
 
-    # Infra sources
-    with Cluster("Cluster Infra"):
-        kubevirt_service = Service("KubeVirt Metrics\n(kubevirt-prometheus-metrics)")
-        nodes = [Node(f"Node-{i}") for i in range(1, 4)]
-        vm_pods = [Pod(f"VM-Pod-{i}") for i in range(1, 4)]
+        with Cluster("Cluster Observability Operator"):
+            troubleshooting = Custom("Troubleshooting\n(Korrel8r)", "./icons/coo.png")
+            incidents = Custom(
+                "Incidents\n(Cluster Health Analyzer)", "./icons/coo.png"
+            )
 
-    # App sources
-    with Cluster("App Namespace"):
-        app_pods = [Pod(f"MyApp-Pod-{i}") for i in range(1, 4)]
+    with Cluster("Platform Observability"):
+        blank_observability_platform = Node(
+            "", shape="plaintext", width="0", height="0"
+        )
+        uwm = Prometheus("UWM Prometheus\n(Metrics)")
+        tempo = Tempo("Tempo\n(Traces)")
+        loki = Loki("Loki\n(Logs)")
 
-    # Connections
-    kubevirt_service >> infra_collector
-    for n in nodes:
-        n >> infra_collector
-    for p in vm_pods:
-        p >> infra_collector
+    with Cluster("observability-demo Project"):
+        otel_col = Pod("App Collector\n(Deployment)")
 
-    for p in app_pods:
-        p >> app_collector
+        with Cluster("Workloads"):
+            quarkus = Pod("Quarkus App")
+            spring = Tomcat("Spring Boot App")
 
-    # Export to backend
-    infra_collector >> backend_metrics
-    app_collector >> backend_metrics
-    app_collector >> backend_traces
-    app_collector >> backend_logs
+    with Cluster("Cluster Nodes"):
+        infra_col = DaemonSet("Infra Collector\n(DaemonSet)")
+        kubelet = Node("Kubelet API")
 
-    # Dashboards read all
-    backend_metrics >> grafana
-    backend_traces >> grafana
-    backend_logs >> grafana
+    # Apps push OTLP to Collector
+    quarkus >> Edge(label="OTLP") >> otel_col
+    spring >> Edge(label="OTLP") >> otel_col
+
+    # Collector exports to Store (Destination implies data type: Tempo=Traces, Loki=Logs)
+    otel_col >> Edge() >> tempo
+    otel_col >> Edge() >> loki
+
+    # Infra Collector exports logs (Added missing connection)
+    infra_col >> Edge() >> loki
+
+    # Prometheus scrapes the collectors
+    uwm >> Edge(style="dashed", color="darkgray") >> otel_col
+    uwm >> Edge(style="dashed", color="darkgray") >> infra_col
+
+    # Infra Collector scrapes Kubelet
+    infra_col >> Edge(style="dashed", color="darkgray", label="stats") >> kubelet
+
+    # Troubleshooting correlates data (Red/Firebrick indicates "Investigation")
+    (
+        troubleshooting
+        >> Edge(color="firebrick", label="Correlate signals")
+        >> blank_observability_platform
+    )
+
+    # Incidents checks health
+    incidents >> Edge(color="firebrick", label="Query") >> uwm
+
+    # OLS asks Incidents
+    ols >> Edge(color="firebrick", label="Analyze") >> incidents
+
+    # Perses visualizes
+    perses >> Edge(color="firebrick") >> uwm
