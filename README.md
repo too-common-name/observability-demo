@@ -15,9 +15,6 @@ Before proceeding with the deployment, ensure your environment meets the followi
 - **OpenShift Cluster**: A running OpenShift Container Platform (OCP) cluster.
     - **Version: 4.20.8** (or compatible 4.20+ versions).
 - **Object Storage**: Ability to create S3 Buckets (required for Loki and Tempo backend storage).
-- **LLM Provider**: Access to a Large Language Model provider. You will need:
-    - The API Endpoint URL.
-    - The API Key.
 
 ### Workstation Tools
 To run the automation scripts and `Makefile`, your local machine must have:
@@ -98,14 +95,21 @@ This project uses a `Makefile` to automate the deployment of operators, infrastr
     - If you are bringing your own existing S3 buckets, the default ObjectBucketClaim (OBC) manifests will not work.
     - **Action**: You may need to manually create the necessary `Secrets` containing your bucket credentials and endpoints and modify the `Makefile` logic to skip the OBC creation steps.
 ### Step 2: Deploy All Components
-Run the `deploy-all` target. You must provide the connection details for your LLM provider (OpenShift Lightspeed backend).
+You can choose to deploy the full stack with or without the OpenShift Lightspeed (OLS) integration. This command will install the Operators, configure the Collectors and Storage, and deploy the demo services.
+
+#### Option A: Standard Deployment (No AI/OLS)
+Use this command if you do not have an LLM provider key or do not wish to enable the conversational interface.
 ```bash
-# Example deployment command
+make deploy-all
+```
+
+#### Option B: Full Deployment (With AI/OLS) 
+Use this command to enable OpenShift Lightspeed. You must provide your LLM credentials.
+```bash
 make deploy-all \
   LLM_API_TOKEN=sk-your-token-here... \
   LLM_URL=https://api.your-provider.com/v1/...
 ```
-This command will install the Operators, configure the Collectors and Storage, and deploy the demo services.
 ## Verification
 Follow these steps to generate traffic and verify that the observability pipeline is functioning correctly.
 

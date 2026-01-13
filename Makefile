@@ -6,7 +6,6 @@
 OC := oc
 YQ := yq
 
-
 # --- Directories ---
 OPERATORS_DIR := infrastructure/00-operators
 PLATFORM_DIR  := infrastructure/01-platform
@@ -15,7 +14,7 @@ VIS_DIR       := infrastructure/03-visualization
 SCRIPTS_DIR   := scripts
 TEMPLATE_DIR  := templates
 GENERATED_DIR := _generated
-MCP_BASE_URL := https://raw.githubusercontent.com/openshift/cluster-health-analyzer/refs/heads/mcp-dev-preview/manifests/mcp
+MCP_BASE_URL  := https://raw.githubusercontent.com/openshift/cluster-health-analyzer/refs/heads/mcp-dev-preview/manifests/mcp
 
 # --- Settings ---
 _ := $(shell chmod +x $(SCRIPTS_DIR)/*.sh)
@@ -33,19 +32,6 @@ check-tools: ## Verify required tools (oc, yq) are installed
 	@which $(OC) > /dev/null || (echo "❌ Error: 'oc' not found." && exit 1)
 	@which $(YQ) > /dev/null || (echo "❌ Error: 'yq' not found." && exit 1)
 	@echo "✅ Cluster connected: $$( $(OC) whoami --show-server )"
-
-check-env: ## Verify required environment variables are set
-	@if [ -z "$(LLM_API_TOKEN)" ]; then \
-		echo "❌ Error: LLM_API_TOKEN is not set."; \
-		echo "   Usage: make deploy-all LLM_API_TOKEN=sk-... LLM_URL=https://..." ; \
-		exit 1; \
-	fi
-	@if [ -z "$(LLM_URL)" ]; then \
-		echo "❌ Error: LLM_URL is not set."; \
-		echo "   Usage: make deploy-all LLM_API_TOKEN=sk-... LLM_URL=https://..." ; \
-		exit 1; \
-	fi
-	@echo "✅ Environment variables validated."
 
 # ====================================================================================
 #  LAYER 0: OPERATORS
@@ -65,33 +51,16 @@ delete-operators: check-tools ## ⚠️  Uninstall Operators (Subscriptions & Op
 # ====================================================================================
 #  LAYER 1: PLATFORM STACK (Cluster-Wide)
 # ====================================================================================
-deploy-mcp: check-tools ## Install Incident Detection MCP Server
-	@echo "💭 Installing Incident Detection MCP Server..."
+
+deploy-platform: check-tools ## 2. Deploy UWM, Loki, Tempo, UI Plugins, MCP, and OLS Config
+	@echo "🚀 [Layer 1] Starting Platform Deployment..."
+
+	@echo "   [Pre-Flight] Installing Incident Detection MCP Server..."
 	@$(OC) apply -f $(MCP_BASE_URL)/01_service_account.yaml
 	@$(OC) apply -f $(MCP_BASE_URL)/02_deployment.yaml
 	@$(OC) apply -f $(MCP_BASE_URL)/03_mcp_service.yaml
-	@echo "✅ MCP Server Deployed."
+	@echo "   ✅ MCP Server Deployed."
 
-generate-ols-config: check-env 
-	@echo "🚀 Generating OLS Configuration..."
-	@model_name=$$(curl -s -k -X GET "$(LLM_URL)/models" \
-		-H "Authorization: Bearer $(LLM_API_TOKEN)" | yq '.data[0].id'); \
-	if [ -z "$$model_name" ]; then \
-		echo "❌ Error: Could not fetch model name. Check URL and Token."; \
-		exit 1; \
-	fi; \
-	echo "   URL:   $(LLM_URL)"; \
-	echo "   Model: $$model_name"; \
-	# Export variables and run envsubst in the same shell context \
-	export LLM_URL="$(LLM_URL)" \
-	       LLM_API_TOKEN="$$(echo -n '$(LLM_API_TOKEN)' | base64 -w0)" \
-	       LLM_MODEL="$$model_name"; \
-	envsubst < $(PLATFORM_DIR)/$(TEMPLATE_DIR)/ols-config.yaml > $(PLATFORM_DIR)/$(GENERATED_DIR)/ols-config.yaml
-	@echo "✅ Generated: $(PLATFORM_DIR)/$(GENERATED_DIR)/ols-config.yaml"
-
-deploy-platform: check-tools generate-ols-config deploy-mcp ## 2. Deploy UWM, Loki, Tempo, and UI Plugins
-	@echo "🚀 [Layer 1] Starting Platform Deployment..."
-	
 	@echo "   [1/7] Configuring User Workload Monitoring..."
 	@$(OC) apply -f $(PLATFORM_DIR)/00-monitoring-config.yaml
 
@@ -109,12 +78,34 @@ deploy-platform: check-tools generate-ols-config deploy-mcp ## 2. Deploy UWM, Lo
 	@echo "   [5/7] Enabling Console Plugins (Troubleshooting/Incidents)..."
 	@$(OC) apply -f $(PLATFORM_DIR)/05-ui-plugins.yaml
 		
-	@echo "   [6/7] Manually create troubleshooting resources"
+	@echo "   [6/7] Manually create troubleshooting resources..."
 	@$(OC) apply -f $(PLATFORM_DIR)/06-korrel8-stack.yaml
 	@$(OC) apply -f $(PLATFORM_DIR)/07-troubleshooting-panel.yaml
+	@echo "   [Patch] Checking Troubleshooting Plugin enablement..."
+	@$(OC) get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' \
+		| grep -q "troubleshooting-panel-console-plugin" \
+		|| $(OC) patch console.operator.openshift.io cluster --type=json \
+		-p '[{"op": "add", "path": "/spec/plugins/-", "value": "troubleshooting-panel-console-plugin"}]'
 
-	@echo "   [7/7] Deploying OLS Configuration..."
-	@$(OC) apply -f $(PLATFORM_DIR)/$(GENERATED_DIR)/ols-config.yaml
+	@echo "   [7/7] Checking OLS Configuration..."
+	@if [ -z "$(LLM_URL)" ] || [ -z "$(LLM_API_TOKEN)" ]; then \
+		echo "     ⚠️  LLM_URL or LLM_API_TOKEN missing. Skipping OLS enablement."; \
+	else \
+		echo "     Generating OLS Configuration..."; \
+		model_name=$$(curl -s -k -X GET "$(LLM_URL)/models" \
+			-H "Authorization: Bearer $(LLM_API_TOKEN)" | yq '.data[0].id'); \
+		if [ -z "$$model_name" ] || [ "$$model_name" = "null" ]; then \
+			echo "❌ Error: Could not fetch model name. Check URL and Token."; \
+			exit 1; \
+		fi; \
+		echo "     URL:   $(LLM_URL)"; \
+		echo "     Model: $$model_name"; \
+		export LLM_URL="$(LLM_URL)" \
+			   LLM_API_TOKEN="$$(echo -n '$(LLM_API_TOKEN)' | base64 -w0)" \
+			   LLM_MODEL="$$model_name"; \
+		envsubst < $(PLATFORM_DIR)/$(TEMPLATE_DIR)/ols-config.yaml > $(PLATFORM_DIR)/$(GENERATED_DIR)/ols-config.yaml; \
+		$(OC) apply -f $(PLATFORM_DIR)/$(GENERATED_DIR)/ols-config.yaml; \
+	fi
 
 	@echo "🔐 [Layer 1] Setting up mTLS Adapter for Tempo..."
 	@./$(SCRIPTS_DIR)/generate-adapter-cert.sh
@@ -174,7 +165,7 @@ deploy-app: check-tools ## 3. Deploy Quarkus, Tomcat VM, Collectors, and Perses
 #  META TARGETS
 # ====================================================================================
 
-deploy-all: check-env deploy-operators deploy-platform deploy-app ## 🌟 Install EVERYTHING from scratch
+deploy-all: deploy-operators deploy-platform deploy-app ## 🌟 Install EVERYTHING from scratch
 	@echo ""
 	@echo "🎉 Full Stack Installation Complete!"
 	@echo "   - Metrics: User Workload Monitoring (Thanos)"
